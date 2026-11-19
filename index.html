@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Диктовка за Книгата на пожеланията</title>
+<style>
+:root{color-scheme:light;--navy:#17213b;--gold:#c5a45f;--cream:#fbf7ed}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;padding:24px;background:linear-gradient(145deg,#243653,#17213b);font-family:Arial,sans-serif;color:var(--cream);display:grid;place-items:center}
+main{width:min(440px,100%);padding:28px 22px;border:1px solid var(--gold);border-radius:18px;text-align:center;box-shadow:0 12px 40px #0005}
+h1{font:500 25px Georgia,serif;color:#e6d19c;margin:0 0 10px}
+p{font-size:14px;line-height:1.6;color:#eadbb8}
+button{border:1px solid var(--gold);border-radius:999px;padding:13px 19px;margin:7px;background:linear-gradient(135deg,#f0d99d,#b99550);color:#17213a;font-weight:bold;cursor:pointer}
+button.secondary{background:transparent;color:#e6d19c}
+#status{min-height:42px;margin-top:15px;color:#e6d19c;font-size:13px}
+#heard{padding:12px;background:var(--cream);color:#30364b;border-radius:9px;min-height:54px;white-space:pre-wrap;text-align:left}
+</style>
+</head>
+<body>
+<main>
+  <h1>Диктовка на пожеланието</h1>
+  <p>Натиснете бутона и говорете на български. Когато приключите, текстът ще се върне автоматично в книгата.</p>
+  <button id="start">🎙 Започни диктовка</button>
+  <button id="stop" class="secondary" disabled>Спри и изпрати</button>
+  <div id="status" role="status">Очаквам да започнете.</div>
+  <div id="heard" aria-live="polite">Разпознатият текст ще се появи тук.</div>
+  <button id="close" class="secondary">Затвори прозореца</button>
+</main>
+<script>
+(() => {
+  const status = document.getElementById('status');
+  const heard = document.getElementById('heard');
+  const start = document.getElementById('start');
+  const stop = document.getElementById('stop');
+  const close = document.getElementById('close');
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recognition = null;
+  let finalText = '';
+  let sent = false;
+
+  function sendText(text) {
+    const clean = (text || '').trim();
+    if (!clean || sent) return;
+    sent = true;
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({ type: 'WISHBOOK_DICTATION_RESULT', text: clean }, '*');
+      status.textContent = 'Текстът е изпратен обратно в книгата.';
+    } else {
+      status.textContent = 'Книгата не е открита. Моля, отворете диктовката от бутона в книгата.';
+    }
+  }
+
+  if (!Recognition) {
+    status.textContent = 'Този браузър не поддържа гласова диктовка. Използвайте актуален Google Chrome.';
+    start.disabled = true;
+  }
+
+  start.addEventListener('click', () => {
+    if (!Recognition || recognition) return;
+    finalText = '';
+    sent = false;
+    heard.textContent = 'Слушам…';
+    recognition = new Recognition();
+    recognition.lang = 'bg-BG';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onstart = () => {
+      status.textContent = 'Слушам Ви… Говорете ясно на български.';
+      start.disabled = true;
+      stop.disabled = false;
+    };
+    recognition.onresult = event => {
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const phrase = event.results[i][0].transcript;
+        if (event.results[i].isFinal) finalText += phrase + ' ';
+        else interim += phrase;
+      }
+      heard.textContent = (finalText + interim).trim() || 'Слушам…';
+    };
+    recognition.onerror = event => {
+      status.textContent = 'Грешка при микрофона: ' + event.error + '. Проверете разрешението за този сайт.';
+      start.disabled = false;
+      stop.disabled = true;
+      recognition = null;
+    };
+    recognition.onend = () => {
+      const text = finalText.trim();
+      start.disabled = false;
+      stop.disabled = true;
+      recognition = null;
+      if (text) sendText(text);
+      else if (!sent) status.textContent = 'Не беше разпознат текст. Опитайте отново.';
+    };
+    try { recognition.start(); }
+    catch (error) {
+      status.textContent = 'Микрофонът не може да бъде стартиран: ' + error.message;
+      recognition = null;
+      start.disabled = false;
+      stop.disabled = true;
+    }
+  });
+
+  stop.addEventListener('click', () => {
+    if (recognition) {
+      status.textContent = 'Изпращам разпознатия текст…';
+      recognition.stop();
+    }
+  });
+  close.addEventListener('click', () => {
+    if (recognition) recognition.stop();
+    window.close();
+  });
+  window.addEventListener('beforeunload', () => {
+    if (recognition) recognition.stop();
+  });
+})();
+</script>
+</body>
+</html>
